@@ -43,6 +43,7 @@ type devTty struct {
 	dev   string
 	wg    sync.WaitGroup
 	l     sync.Mutex
+	bsDEL bool // terminal's Backspace key sends DEL (0x7f), not BS (0x08)
 }
 
 func (tty *devTty) Read(b []byte) (int, error) {
@@ -55,6 +56,10 @@ func (tty *devTty) Write(b []byte) (int, error) {
 
 func (tty *devTty) Close() error {
 	return tty.f.Close()
+}
+
+func (tty *devTty) backspaceIsDEL() bool {
+	return tty.bsDEL
 }
 
 func (tty *devTty) Start() error {
@@ -85,6 +90,7 @@ func (tty *devTty) Start() error {
 		return err
 	}
 	tty.saved = saved
+	tty.bsDEL = eraseCharIsDEL(tty.fd)
 
 	tty.stopQ = make(chan struct{})
 	tty.wg.Add(1)

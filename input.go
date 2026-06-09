@@ -86,6 +86,12 @@ type inputProcessor struct {
 	cols      int // used for clipping mouse coordinates
 	surrogate rune
 	nested    *inputProcessor
+
+	// bareBSIsCtrlH reports a lone 0x08 byte as Ctrl+H instead of Backspace.
+	// Set only when the terminal's Backspace key sends DEL (0x7f), so the two
+	// remain distinct even without an enhanced keyboard protocol (e.g. tmux
+	// with extended-keys off, which collapses Ctrl+H to a raw 0x08).
+	bareBSIsCtrlH bool
 }
 
 func (ip *inputProcessor) SetSize(w, h int) {
@@ -442,7 +448,13 @@ func (ip *inputProcessor) scan() {
 				}
 			case '\t':
 				ip.post(NewEventKey(KeyTab, 0, ModNone))
-			case '\b', '\x7F':
+			case '\b':
+				if ip.bareBSIsCtrlH {
+					ip.post(NewEventKey(KeyCtrlH, 0, ModCtrl))
+				} else {
+					ip.post(NewEventKey(KeyBackspace, 0, ModNone))
+				}
+			case '\x7F':
 				ip.post(NewEventKey(KeyBackspace, 0, ModNone))
 			case '\r':
 				ip.post(NewEventKey(KeyEnter, 0, ModNone))

@@ -1177,6 +1177,11 @@ func (t *tScreen) engage() error {
 		return err
 	}
 	t.running = true
+	if bp, ok := t.tty.(interface{ backspaceIsDEL() bool }); ok {
+		if ip, ok := t.input.(*inputProcessor); ok {
+			ip.bareBSIsCtrlH = bp.backspaceIsDEL()
+		}
+	}
 	if ws, err := t.tty.WindowSize(); err == nil && ws.Width != 0 && ws.Height != 0 {
 		t.cells.Resize(ws.Width, ws.Height)
 	}
