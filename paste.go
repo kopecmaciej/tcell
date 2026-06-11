@@ -44,9 +44,21 @@ func (ev *EventPaste) End() bool {
 	return !ev.start
 }
 
+// Data returns the raw content of a bracketed paste, exactly as transmitted by
+// the terminal. It is only populated on the end event (when End() is true);
+func (ev *EventPaste) Data() []byte {
+	return ev.data
+}
+
 // NewEventPaste returns a new EventPaste.
 func NewEventPaste(start bool) *EventPaste {
 	return &EventPaste{t: time.Now(), start: start}
+}
+
+// newEventPasteData returns the end event of a bracketed paste, carrying the
+// raw pasted content.
+func newEventPasteData(data []byte) *EventPaste {
+	return &EventPaste{t: time.Now(), start: false, data: data}
 }
 
 // NewEventClipboard returns a new NewEventClipboard with a data payload

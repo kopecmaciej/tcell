@@ -25,6 +25,7 @@
 package tcell
 
 import (
+	"bytes"
 	"encoding/base64"
 	"os"
 	"strconv"
@@ -34,6 +35,11 @@ import (
 	"unicode/utf16"
 	"unicode/utf8"
 )
+
+// pasteEndMarker is the terminating sequence of a bracketed paste (CSI 201 ~).
+// Terminals guarantee this sequence never appears within the pasted content,
+// so we can buffer raw bytes until we see it.
+var pasteEndMarker = []byte("\x1b[201~")
 
 type inpState int
 
@@ -87,6 +93,12 @@ type inputProcessor struct {
 	surrogate rune
 	nested    *inputProcessor
 
+	// pasting is true while inside a bracketed paste. During this, raw bytes
+	// are buffered into pasteBuf, rater just send as key events. This persevers
+	// byte-for-byte content, so newlines, tabs, etc.
+	pasting  bool
+	pasteBuf []byte
+
 	// bareBSIsCtrlH reports a lone 0x08 byte as Ctrl+H instead of Backspace.
 	// Set only when the terminal's Backspace key sends DEL (0x7f), so the two
 	// remain distinct even without an enhanced keyboard protocol (e.g. tmux
@@ -116,6 +128,8 @@ func (ip *inputProcessor) post(ev Event) {
 	} else if ke, ok := ev.(*EventKey); ok {
 		switch ke.Key() {
 		case keyPasteStart:
+			ip.pasting = true
+			ip.pasteBuf = ip.pasteBuf[:0]
 			ev = NewEventPaste(true)
 		case keyPasteEnd:
 			ev = NewEventPaste(false)
@@ -430,6 +444,16 @@ var linuxFKeys = map[rune]Key{
 func (ip *inputProcessor) scan() {
 	for _, r := range ip.buf {
 		ip.buf = ip.buf[1:]
+		if ip.pasting {
+			ip.pasteBuf = utf8.AppendRune(ip.pasteBuf, r)
+			if bytes.HasSuffix(ip.pasteBuf, pasteEndMarker) {
+				data := bytes.Clone(ip.pasteBuf[:len(ip.pasteBuf)-len(pasteEndMarker)])
+				ip.pasteBuf = ip.pasteBuf[:0]
+				ip.pasting = false
+				ip.evch <- newEventPasteData(data)
+			}
+			continue
+		}
 		if r > 0x7F {
 			// 8-bit extended Unicode we just treat as such - this will swallow anything else queued up
 			ip.state = inpStateInit
